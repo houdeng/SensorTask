@@ -2,10 +2,20 @@ package com.example.sensortask;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.content.ComponentName;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.util.Log;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import org.eclipse.paho.android.service.MqttAndroidClient;
 import org.eclipse.paho.client.mqttv3.IMqttActionListener;
@@ -15,10 +25,32 @@ import org.eclipse.paho.client.mqttv3.MqttCallback;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
+import org.json.JSONObject;
 
-public class MainActivity extends AppCompatActivity {
+import java.util.List;
 
-    private String str = "{\"method\":\"thing.service.property.set\",\"id\":\"674238177\",\"params\":{\"PowerSwitch\":1},\"version\":\"1.0.0\"}\n";
+public class MainActivity extends AppCompatActivity{
+
+    private AutoUpdateService.GetDataBinder getDataBinder ;
+    private EditText editText;
+
+    private ServiceConnection connection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
+            getDataBinder = (AutoUpdateService.GetDataBinder) iBinder;
+            getDataBinder.getData(MainActivity.this);
+            Intent intent = new Intent(MainActivity.this,AutoUpdateService.class);
+            startService(intent);
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName componentName) {
+
+        }
+    };
+
+    private static String str = "{\"method\":\"thing.service.property.set\",\"id\":\"674238177\",\"params\":{\"PowerSwitch\":2},\"version\":\"1.0.0\"}\n";
+    private static String str1 = "{\"method\":\"thing.service.property.set\",\"id\":\"674238177\",\"params\":{\"PowerSwitch\":1},\"version\":\"1.0.0\"}\n";
 
     /* 设备三元组信息 */
      final public String PRODUCTKEY = "gy028w6Lu1k";
@@ -61,9 +93,9 @@ public class MainActivity extends AppCompatActivity {
         mqttConnectOptions.setUserName(userName);
         mqttConnectOptions.setPassword(passWord.toCharArray());
 
-
         /* 创建MqttAndroidClient对象, 并设置回调接口 */
         mqttAndroidClient = new MqttAndroidClient(getApplicationContext(), host, clientId);
+        TextView textView = findViewById(R.id.data);
         mqttAndroidClient.setCallback(new MqttCallback() {
             @Override
             public void connectionLost(Throwable cause) {
@@ -73,6 +105,14 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void messageArrived(String topic, MqttMessage message) throws Exception {
                 Log.i(TAG, "topic: " + topic + ", msg: " + new String(message.getPayload()));
+                //转化并展示数据
+                JSONObject jsonObject = new JSONObject(new String(message.getPayload()));
+                float res = Float.parseFloat(jsonObject.getString("data"));
+                int data = (int) Math.floor(res);
+                int temp = 8-data;
+                setView(data);
+                textView.setText(String.valueOf(temp));
+//                textView.setText(jsonObject.getString("data"));
             }
 
             @Override
@@ -109,6 +149,28 @@ public class MainActivity extends AppCompatActivity {
                 publishMessage(str);
             }
         });
+        Button openButton = findViewById(R.id.open);
+        openButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                publishMessage(str1);
+            }
+        });
+        Button setThreshold = findViewById(R.id.set_threshold);
+        editText = findViewById(R.id.et_threshold);
+        setThreshold.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                int a = Integer.parseInt(editText.getText().toString());
+                String str2 = "{\"method\":\"thing.service.property.set\",\"id\":\"674238177\",\"params\":{\"PowerSwitch\":3,\"Threshold\":"+a+"},\"version\":\"1.0.0\"}\n";
+                publishMessage(str2);
+            }
+        });
+        /**
+         * 绑定服务
+         */
+        Intent intent = new Intent(this,AutoUpdateService.class);
+        bindService(intent,connection,BIND_AUTO_CREATE);
     }
 
     /**
@@ -163,4 +225,19 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
     }
+
+    /**
+     * 设置view的大小
+     */
+    private void setViewFullScreen(View view,int data) {
+        ViewGroup.LayoutParams layoutParams = view.getLayoutParams();
+        int temp = 8 - data;
+        layoutParams.height = 300 + temp * 200;
+        view.setLayoutParams(layoutParams);
+    }
+    private void setView(int data){
+        View view = findViewById(R.id.view_bottle);
+        setViewFullScreen(view,data);
+    }
+
 }
